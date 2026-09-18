@@ -1,0 +1,2200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sanctuary — You don't have to figure everything out right now</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+            serif: ['"Newsreader"', 'Georgia', 'serif'],
+          },
+          colors: {
+            sanctuary: {
+              cream: '#FAF6F0',
+              creamDark: '#F3ECE0',
+              sand: '#E9E0CE',
+              sage: '#7C8E7B',
+              sageLight: '#E3E9E2',
+              sageDark: '#4F604E',
+              terracotta: '#C87D65',
+              terracottaLight: '#F5EAE5',
+              dustyBlue: '#6C839B',
+              dustyBlueLight: '#E7EEF4',
+              night: '#131718',
+              nightSurface: '#1C2324',
+              nightCard: '#242C2E',
+              nightBorder: '#323E40',
+              warmText: '#EFE7DA',
+              warmMuted: '#9BA8A4',
+            }
+          },
+          animation: {
+            'float-slow': 'float 8s ease-in-out infinite',
+            'pulse-gentle': 'pulseGentle 6s ease-in-out infinite',
+          },
+          keyframes: {
+            float: {
+              '0%, 100%': { transform: 'translateY(0px)' },
+              '50%': { transform: 'translateY(-10px)' },
+            },
+            pulseGentle: {
+              '0%, 100%': { opacity: '0.4', transform: 'scale(1)' },
+              '50%': { opacity: '0.7', transform: 'scale(1.04)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Subtle organic background texture */
+    body {
+      background-color: #131718;
+      color: #EFE7DA;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      overflow-x: hidden;
+      margin: 0;
+    }
+    
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(19, 23, 24, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(124, 142, 123, 0.3);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(200, 125, 101, 0.5);
+    }
+
+    /* Range input styling */
+    input[type=range] {
+      accent-color: #E9E0CE;
+    }
+
+    /* Ambient noise background layer */
+    .bg-grain {
+      background-image: radial-gradient(rgba(240, 230, 215, 0.03) 1px, transparent 0);
+      background-size: 24px 24px;
+    }
+
+    /* Soft vignette */
+    .sanctuary-vignette {
+      background: radial-gradient(circle at 50% 35%, rgba(200, 125, 101, 0.08) 0%, rgba(19, 23, 24, 0.85) 75%, #131718 100%);
+    }
+  </style>
+
+  <!-- React & ReactDOM from CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-sanctuary-night text-sanctuary-warmText selection:bg-sanctuary-terracotta/30 selection:text-white">
+
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+// -------------------------------------------------------------
+// WEB AUDIO PROCEDURAL AMBIENT SYNTHESIS ENGINE
+// 100% Client-side synthesized. No broken external mp3 links.
+// -------------------------------------------------------------
+class ProceduralAudioEngine {
+  constructor() {
+    this.ctx = null;
+    this.isMuted = false;
+    this.masterGain = null;
+    this.nodes = {};
+    this.initialized = false;
+  }
+
+  init() {
+    if (this.initialized) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      this.ctx = new AudioCtx();
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.setValueAtTime(0.75, this.ctx.currentTime);
+      this.masterGain.connect(this.ctx.destination);
+      this.initialized = true;
+    } catch (e) {
+      console.warn("Web Audio not supported", e);
+    }
+  }
+
+  resume() {
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  setMasterVolume(val) {
+    if (!this.masterGain || !this.ctx) return;
+    this.masterGain.gain.setTargetAtTime(this.isMuted ? 0 : val, this.ctx.currentTime, 0.05);
+  }
+
+  toggleMute() {
+    this.isMuted = !this.isMuted;
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setTargetAtTime(this.isMuted ? 0 : 0.75, this.ctx.currentTime, 0.05);
+    }
+    return this.isMuted;
+  }
+
+  createNoiseBuffer(type = 'pink') {
+    if (!this.ctx) return null;
+    const bufferSize = this.ctx.sampleRate * 4;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      if (type === 'pink') {
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.12;
+        b6 = white * 0.115926;
+      } else {
+        data[i] = white * 0.15; // White noise
+      }
+    }
+    return buffer;
+  }
+
+  startSound(name, vol = 0.5) {
+    this.init();
+    this.resume();
+    if (!this.ctx || this.nodes[name]) return;
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0, this.ctx.currentTime);
+    gain.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.15);
+    gain.connect(this.masterGain);
+
+    if (name === 'rain') {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.createNoiseBuffer('pink');
+      noise.loop = true;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1050, this.ctx.currentTime);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      noise.start();
+      this.nodes[name] = { source: noise, gain, filter };
+    } 
+    else if (name === 'ocean') {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.createNoiseBuffer('pink');
+      noise.loop = true;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(360, this.ctx.currentTime);
+      filter.Q.setValueAtTime(2.2, this.ctx.currentTime);
+
+      // LFO for periodic wave wash
+      const lfo = this.ctx.createOscillator();
+      lfo.frequency.setValueAtTime(0.1, this.ctx.currentTime); // 10s per tidal cycle
+      const lfoGain = this.ctx.createGain();
+      lfoGain.gain.setValueAtTime(280, this.ctx.currentTime);
+
+      lfo.connect(filter.frequency);
+      noise.connect(filter);
+      filter.connect(gain);
+
+      noise.start();
+      lfo.start();
+      this.nodes[name] = { source: noise, lfo, gain, filter };
+    } 
+    else if (name === 'fireplace') {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.createNoiseBuffer('white');
+      noise.loop = true;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1400, this.ctx.currentTime);
+      filter.Q.setValueAtTime(3.5, this.ctx.currentTime);
+
+      // Low warm drone
+      const subOsc = this.ctx.createOscillator();
+      subOsc.type = 'sine';
+      subOsc.frequency.setValueAtTime(65, this.ctx.currentTime);
+      const subGain = this.ctx.createGain();
+      subGain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      subOsc.connect(subGain);
+      subGain.connect(gain);
+
+      noise.start();
+      subOsc.start();
+      this.nodes[name] = { source: noise, subOsc, gain };
+    } 
+    else if (name === 'forest') {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.createNoiseBuffer('pink');
+      noise.loop = true;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(420, this.ctx.currentTime);
+
+      const lfo = this.ctx.createOscillator();
+      lfo.frequency.setValueAtTime(0.18, this.ctx.currentTime);
+      const lfoGain = this.ctx.createGain();
+      lfoGain.gain.setValueAtTime(140, this.ctx.currentTime);
+
+      lfo.connect(filter.frequency);
+      noise.connect(filter);
+      filter.connect(gain);
+
+      noise.start();
+      lfo.start();
+      this.nodes[name] = { source: noise, lfo, gain };
+    } 
+    else if (name === 'drone') {
+      // 528 Hz Love/Restoration chord (F2, C3, A3, E4 chord)
+      const freqs = [87.3, 130.8, 220.0, 329.6];
+      const oscs = freqs.map(f => {
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, this.ctx.currentTime);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.1, this.ctx.currentTime);
+        osc.connect(g);
+        g.connect(gain);
+        osc.start();
+        return osc;
+      });
+      this.nodes[name] = { oscs, gain };
+    }
+  }
+
+  stopSound(name) {
+    if (!this.nodes[name] || !this.ctx) return;
+    const node = this.nodes[name];
+    try {
+      node.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.15);
+      setTimeout(() => {
+        if (node.source) node.source.stop();
+        if (node.lfo) node.lfo.stop();
+        if (node.subOsc) node.subOsc.stop();
+        if (node.oscs) node.oscs.forEach(o => o.stop());
+        delete this.nodes[name];
+      }, 160);
+    } catch(e) {
+      delete this.nodes[name];
+    }
+  }
+
+  setSoundVolume(name, vol) {
+    if (this.nodes[name] && this.ctx) {
+      this.nodes[name].gain.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.05);
+    }
+  }
+
+  playSoftChime() {
+    this.init();
+    this.resume();
+    if (!this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(528, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(520, this.ctx.currentTime + 3.0);
+
+      gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 3.5);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 3.6);
+    } catch (e) {}
+  }
+}
+
+const audioService = new ProceduralAudioEngine();
+
+const EMOTIONAL_STATES = [
+  { 
+    id: 'academic', 
+    emoji: '📚', 
+    label: 'Academic pressure', 
+    sub: 'Exams, grades & expectations', 
+    quote: 'It sounds like your mind has been carrying an immense load. You are more than a grade or an assignment. Let’s put the pressure down for just a few minutes.',
+    prompt: 'What expectation or deadline is sitting heaviest on your chest?'
+  },
+  { 
+    id: 'comparison', 
+    emoji: '🪞', 
+    label: 'Comparing myself with others', 
+    sub: 'Feeling left behind or inadequate', 
+    quote: 'Someone else’s timeline is not a measurement of yours. You see their curated chapter while living in your quiet draft. You are allowed your own gentle pace.',
+    prompt: 'Who or what made you feel like you are not enough today?'
+  },
+  { 
+    id: 'miss', 
+    emoji: '🍂', 
+    label: 'Someone I miss', 
+    sub: 'A space that feels quiet or tender', 
+    quote: 'Some people leave a bigger space behind than they realize. You don’t have to force yourself to "get over it". Let’s sit gently with the feeling.',
+    prompt: 'What memory or unspoken word is lingering with you right now?'
+  },
+  { 
+    id: 'lonely', 
+    emoji: '🫥', 
+    label: 'Feeling lonely', 
+    sub: 'Surrounded, yet entirely unseen', 
+    quote: 'Loneliness isn’t proof that you are unlovable or broken. It’s simply your heart reminding you that you crave genuine warmth and connection.',
+    prompt: 'How does this loneliness feel right now? There is room for all of it here.'
+  },
+  { 
+    id: 'overthinking', 
+    emoji: '🌀', 
+    label: 'My mind won’t stop', 
+    sub: 'Loops that refuse to be solved', 
+    quote: 'Your mind is working overtime trying to keep you safe by predicting everything. But you don’t have to solve tomorrow tonight.',
+    prompt: 'What thought has been spinning in circles inside your head?'
+  },
+  { 
+    id: 'exhausted', 
+    emoji: '🕯️', 
+    label: 'I’m exhausted', 
+    sub: 'Running on empty reserves', 
+    quote: 'Rest is not a reward you have to earn after collapsing. You are allowed to stop right now simply because you are human.',
+    prompt: 'What has been draining your energy the most lately?'
+  },
+  { 
+    id: 'frustrated', 
+    emoji: '🔥', 
+    label: 'I’m frustrated', 
+    sub: 'Things aren’t going right', 
+    quote: 'It makes complete sense that you feel this friction. You don’t have to pretend everything is fine. Let’s give that heat a safe space to cool.',
+    prompt: 'What feels so unfairly difficult or stuck right now?'
+  },
+  { 
+    id: 'unknown', 
+    emoji: '🌫️', 
+    label: 'I don’t know', 
+    sub: 'A heavy, nameless cloud', 
+    quote: 'You don’t need the right words to justify needing a soft place to land. It is completely okay to just exist here without explaining anything.',
+    prompt: 'Whatever is there, even if it feels like static or mist, let it out.'
+  }
+];
+
+const ROOMS = [
+  { 
+    id: 'rain', 
+    name: 'Rain on Glass', 
+    tagline: 'Cool grey drops, soft quiet rhythm', 
+    soundKey: 'rain',
+    desc: 'Sit by a high window while cool rain patters against the glass, washing away the mental noise of the day.',
+    themeBg: 'from-slate-900 via-stone-900 to-indigo-950',
+    accentColor: 'text-sky-300'
+  },
+  { 
+    id: 'ocean', 
+    name: 'Tidal Swell', 
+    tagline: 'Slow waves realigning your breathing', 
+    soundKey: 'ocean',
+    desc: 'Listen to the infinite pull and release of gentle ocean tides. Nothing is required of you here.',
+    themeBg: 'from-cyan-950 via-slate-900 to-sky-950',
+    accentColor: 'text-cyan-300'
+  },
+  { 
+    id: 'hearth', 
+    name: 'Cozy Hearth', 
+    tagline: 'Warm glowing embers & wood crackle', 
+    soundKey: 'fireplace',
+    desc: 'Wrapped in a heavy knit blanket in an old wooden armchair, watching embers drift up the chimney.',
+    themeBg: 'from-amber-950 via-stone-900 to-orange-950',
+    accentColor: 'text-amber-300'
+  },
+  { 
+    id: 'forest', 
+    name: 'Pine Sanctuary', 
+    tagline: 'Sunlight filtering through cedar branches', 
+    soundKey: 'forest',
+    desc: 'Deep in the mossy evergreen woods. Breathing in crisp pine needle air and dappled golden light.',
+    themeBg: 'from-emerald-950 via-stone-950 to-teal-950',
+    accentColor: 'text-emerald-300'
+  },
+  { 
+    id: 'night', 
+    name: 'Starlit Silence', 
+    tagline: 'Deep indigo sky, soft harmonic drone', 
+    soundKey: 'drone',
+    desc: 'Under a vast canopy of quiet stars. A gentle harmonic resonance tuned to 528Hz grounding your nervous system.',
+    themeBg: 'from-purple-950 via-indigo-950 to-stone-950',
+    accentColor: 'text-indigo-300'
+  }
+];
+
+const GROUNDING_STEPS = [
+  { count: 5, sense: 'SEE', prompt: 'Notice 5 things you can see around you.', hint: 'A ray of light, your cup, the wood grain, a soft shadow...' },
+  { count: 4, sense: 'TOUCH', prompt: 'Feel 4 physical sensations supporting you.', hint: 'Your feet on the ground, fabric on your arm, the temperature...' },
+  { count: 3, sense: 'HEAR', prompt: 'Tune into 3 gentle sounds in your space.', hint: 'The hum of air, distant murmur, your own slow breath...' },
+  { count: 2, sense: 'SMELL', prompt: 'Notice 2 scents or take two deep fragrant breaths.', hint: 'Fresh air, tea, paper, or the stillness of the room...' },
+  { count: 1, sense: 'APPRECIATE', prompt: 'Acknowledge 1 gentle truth about yourself.', hint: 'I paused. I am taking care of myself. I am doing my best.' }
+];
+
+const DEFAULT_WINS = [
+  { id: 1, text: 'Drank a glass of fresh water', done: true, time: 'Morning' },
+  { id: 2, text: 'Got out of bed and stepped into daylight', done: true, time: 'Morning' },
+  { id: 3, text: 'Paused to breathe when overwhelmed', done: true, time: 'Just now' },
+  { id: 4, text: 'Reviewed notes without harsh self-criticism', done: false, time: 'Afternoon' },
+  { id: 5, text: 'Let myself take a guilt-free rest', done: false, time: 'Evening' },
+  { id: 6, text: 'Stepped outside or looked at the clouds', done: false, time: 'Anytime' }
+];
+
+// Particle Dissolution Canvas for the "Let It Go" thought release
+function DissolveCanvas({ text, onComplete }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const width = (canvas.width = canvas.parentElement.clientWidth);
+    const height = (canvas.height = 240);
+
+    // Draw the text
+    ctx.font = '500 20px "Newsreader", Georgia, serif';
+    ctx.fillStyle = '#FAF6F0';
+    ctx.textAlign = 'center';
+    
+    const words = text.split(' ');
+    const lines = [];
+    let currentLine = '';
+    const maxWidth = width * 0.82;
+
+    for (let i = 0; i < words.length; i++) {
+      const test = currentLine + words[i] + ' ';
+      if (ctx.measureText(test).width > maxWidth && i > 0) {
+        lines.push(currentLine);
+        currentLine = words[i] + ' ';
+      } else {
+        currentLine = test;
+      }
+    }
+    lines.push(currentLine);
+
+    const startY = height / 2 - (lines.length * 26) / 2;
+    lines.forEach((l, idx) => {
+      ctx.fillText(l.trim(), width / 2, startY + idx * 28);
+    });
+
+    // Sample pixels into stardust
+    const imgData = ctx.getImageData(0, 0, width, height);
+    const particles = [];
+    const step = 4;
+
+    for (let y = 0; y < height; y += step) {
+      for (let x = 0; x < width; x += step) {
+        const index = (y * width + x) * 4;
+        if (imgData.data[index + 3] > 100) {
+          particles.push({
+            x,
+            y,
+            vx: (Math.random() - 0.5) * 3.2,
+            vy: -Math.random() * 2.8 - 0.6,
+            radius: Math.random() * 2.5 + 0.8,
+            alpha: 1,
+            fade: Math.random() * 0.015 + 0.008,
+            color: Math.random() > 0.4 ? '233, 224, 206' : '200, 125, 101' // Gold & Terracotta stardust
+          });
+        }
+      }
+    }
+
+    ctx.clearRect(0, 0, width, height);
+    let animId;
+    let progress = 1;
+
+    const render = () => {
+      ctx.clearRect(0, 0, width, height);
+      let alive = 0;
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        if (p.alpha > 0.01) {
+          alive++;
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vx += (Math.random() - 0.5) * 0.12;
+          p.alpha -= p.fade;
+
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${p.color}, ${Math.max(0, p.alpha)})`;
+          ctx.shadowBlur = 6;
+          ctx.shadowColor = `rgba(${p.color}, 0.5)`;
+          ctx.fill();
+        }
+      }
+
+      progress -= 0.012;
+      if (alive > 10 && progress > 0) {
+        animId = requestAnimationFrame(render);
+      } else {
+        onComplete();
+      }
+    };
+
+    render();
+    return () => cancelAnimationFrame(animId);
+  }, [text, onComplete]);
+
+  return <canvas ref={canvasRef} className="w-full rounded-2xl block my-2" />;
+}
+
+// Interactive background canvas with floating pollen/dust motes
+function AtmosphericCanvas() {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+
+    const onResize = () => {
+      if (!canvas) return;
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+    window.addEventListener('resize', onResize);
+
+    const motes = Array.from({ length: 45 }, () => ({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      size: Math.random() * 2.8 + 1,
+      vx: (Math.random() - 0.5) * 0.25,
+      vy: (Math.random() - 0.5) * 0.25,
+      alpha: Math.random() * 0.35 + 0.1,
+      color: Math.random() > 0.5 ? '233, 224, 206' : '124, 142, 123'
+    }));
+
+    let animId;
+    const draw = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      motes.forEach(m => {
+        m.x += m.vx;
+        m.y += m.vy;
+        if (m.x < 0) m.x = width;
+        if (m.x > width) m.x = 0;
+        if (m.y < 0) m.y = height;
+        if (m.y > height) m.y = 0;
+
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${m.color}, ${m.alpha})`;
+        ctx.fill();
+      });
+
+      animId = requestAnimationFrame(draw);
+    };
+
+    draw();
+    return () => {
+      window.removeEventListener('resize', onResize);
+      cancelAnimationFrame(animId);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0 opacity-70" />;
+}
+
+function RoomVisualCanvas({ roomType }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let width = (canvas.width = canvas.parentElement.clientWidth);
+    let height = (canvas.height = canvas.parentElement.clientHeight);
+
+    let animId;
+
+    if (roomType === 'rain') {
+      // Rain simulator on glass
+      const drops = Array.from({ length: 70 }, () => ({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        speed: Math.random() * 6 + 4,
+        len: Math.random() * 18 + 10,
+        alpha: Math.random() * 0.4 + 0.2
+      }));
+
+      const loop = () => {
+        ctx.clearRect(0, 0, width, height);
+        ctx.strokeStyle = 'rgba(180, 210, 230, 0.4)';
+        ctx.lineWidth = 1.2;
+
+        drops.forEach(d => {
+          ctx.beginPath();
+          ctx.moveTo(d.x, d.y);
+          ctx.lineTo(d.x - 1, d.y + d.len);
+          ctx.stroke();
+
+          d.y += d.speed;
+          if (d.y > height) {
+            d.y = -20;
+            d.x = Math.random() * width;
+          }
+        });
+        animId = requestAnimationFrame(loop);
+      };
+      loop();
+    } else if (roomType === 'ocean') {
+      // Slow ocean wave layers
+      let step = 0;
+      const loop = () => {
+        ctx.clearRect(0, 0, width, height);
+        step += 0.015;
+
+        for (let j = 0; j < 3; j++) {
+          ctx.beginPath();
+          ctx.moveTo(0, height);
+          for (let x = 0; x <= width; x += 15) {
+            const y = height - (60 + j * 30) + Math.sin(x * 0.008 + step + j) * (18 + j * 6);
+            ctx.lineTo(x, y);
+          }
+          ctx.lineTo(width, height);
+          ctx.fillStyle = `rgba(108, 131, 155, ${0.15 + j * 0.1})`;
+          ctx.fill();
+        }
+        animId = requestAnimationFrame(loop);
+      };
+      loop();
+    } else if (roomType === 'hearth') {
+      // Fireplace embers rising
+      const embers = Array.from({ length: 45 }, () => ({
+        x: width / 2 + (Math.random() - 0.5) * (width * 0.5),
+        y: height - Math.random() * 50,
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: -Math.random() * 2.2 - 0.8,
+        radius: Math.random() * 3 + 1,
+        life: Math.random() * 1,
+        hue: Math.random() > 0.5 ? '200, 125, 101' : '233, 180, 80'
+      }));
+
+      const loop = () => {
+        ctx.clearRect(0, 0, width, height);
+        embers.forEach(e => {
+          e.x += e.vx;
+          e.y += e.vy;
+          e.life -= 0.008;
+
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${e.hue}, ${Math.max(0, e.life)})`;
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = `rgba(${e.hue}, 0.7)`;
+          ctx.fill();
+
+          if (e.life <= 0 || e.y < 0) {
+            e.x = width / 2 + (Math.random() - 0.5) * (width * 0.5);
+            e.y = height - 20;
+            e.life = 1;
+          }
+        });
+        animId = requestAnimationFrame(loop);
+      };
+      loop();
+    } else if (roomType === 'forest') {
+      // Gentle sun rays and floating leaves
+      const leaves = Array.from({ length: 25 }, () => ({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: Math.random() * 0.8 + 0.2,
+        vy: Math.random() * 0.6 + 0.4,
+        size: Math.random() * 5 + 3,
+        rot: Math.random() * 360,
+        vRot: (Math.random() - 0.5) * 2
+      }));
+
+      const loop = () => {
+        ctx.clearRect(0, 0, width, height);
+
+        // Sunlight wash
+        const grad = ctx.createLinearGradient(0, 0, width, height);
+        grad.addColorStop(0, 'rgba(233, 224, 206, 0.15)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+
+        leaves.forEach(l => {
+          l.x += l.vx;
+          l.y += l.vy;
+          l.rot += l.vRot;
+
+          ctx.save();
+          ctx.translate(l.x, l.y);
+          ctx.rotate((l.rot * Math.PI) / 180);
+          ctx.fillStyle = 'rgba(124, 142, 123, 0.4)';
+          ctx.beginPath();
+          ctx.ellipse(0, 0, l.size, l.size / 2, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+
+          if (l.y > height) l.y = -10;
+          if (l.x > width) l.x = -10;
+        });
+        animId = requestAnimationFrame(loop);
+      };
+      loop();
+    } else {
+      // Starry sky twinkle
+      const stars = Array.from({ length: 60 }, () => ({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        radius: Math.random() * 1.8 + 0.5,
+        twinkle: Math.random() * Math.PI,
+        speed: Math.random() * 0.04 + 0.01
+      }));
+
+      const loop = () => {
+        ctx.clearRect(0, 0, width, height);
+        stars.forEach(s => {
+          s.twinkle += s.speed;
+          const alpha = 0.3 + Math.sin(s.twinkle) * 0.4;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(239, 231, 218, ${Math.max(0.1, alpha)})`;
+          ctx.shadowBlur = 4;
+          ctx.shadowColor = 'rgba(239, 231, 218, 0.6)';
+          ctx.fill();
+        });
+        animId = requestAnimationFrame(loop);
+      };
+      loop();
+    }
+
+    return () => cancelAnimationFrame(animId);
+  }, [roomType]);
+
+  return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none opacity-80" />;
+}
+
+function BreathingOrb({ onComplete, onSkip }) {
+  const [phase, setPhase] = useState('Inhale'); // Inhale, Hold, Exhale
+  const [counter, setCounter] = useState(4);
+  const [cycle, setCycle] = useState(1);
+  const totalCycles = 3;
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCounter(prev => {
+        if (prev > 1) return prev - 1;
+
+        if (phase === 'Inhale') {
+          setPhase('Hold');
+          return 4;
+        } else if (phase === 'Hold') {
+          setPhase('Exhale');
+          return 6;
+        } else if (phase === 'Exhale') {
+          if (cycle >= totalCycles) {
+            clearInterval(timer);
+            audioService.playSoftChime();
+            setTimeout(() => onComplete(), 800);
+            return 0;
+          }
+          setCycle(c => c + 1);
+          setPhase('Inhale');
+          return 4;
+        }
+        return 4;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [phase, cycle, totalCycles, onComplete]);
+
+  // Smooth CSS scale class
+  const scaleClass = phase === 'Inhale' 
+    ? 'scale-125 transition-transform duration-[4000ms] ease-out' 
+    : phase === 'Hold' 
+    ? 'scale-125 transition-transform duration-300' 
+    : 'scale-90 transition-transform duration-[6000ms] ease-in-out';
+
+  return (
+    <div className="flex flex-col items-center justify-center py-6 text-center">
+      <span className="text-xs uppercase tracking-widest text-sanctuary-sand/80 font-mono mb-2">
+        Cycle {cycle} of {totalCycles}
+      </span>
+
+      <h3 className="font-serif text-3xl md:text-4xl text-sanctuary-cream mb-2 transition-all">
+        {phase === 'Inhale' && 'Breathe in softly...'}
+        {phase === 'Hold' && 'Gently hold that quiet...'}
+        {phase === 'Exhale' && 'Release and soften your shoulders...'}
+      </h3>
+      <p className="text-sanctuary-warmMuted text-xs md:text-sm max-w-sm mb-10">
+        Let your belly soften. You don’t need to force anything.
+      </p>
+
+      {/* Dynamic breathing orb with multi-layer glow */}
+      <div className="relative w-64 h-64 flex items-center justify-center my-4">
+        {/* Outer aura */}
+        <div className={`absolute inset-0 rounded-full bg-gradient-to-tr from-sanctuary-terracotta/20 via-sanctuary-sand/20 to-sanctuary-sage/20 blur-3xl ${scaleClass}`} />
+        {/* Outer ring */}
+        <div className={`absolute w-52 h-52 rounded-full border border-sanctuary-sand/30 ${scaleClass}`} />
+        {/* Inner sphere */}
+        <div className={`w-36 h-36 rounded-full bg-gradient-to-br from-sanctuary-cream via-sanctuary-sand to-sanctuary-sage/40 shadow-[0_0_60px_rgba(233,224,206,0.35)] flex items-center justify-center ${scaleClass}`}>
+          <div className="text-center text-sanctuary-night">
+            <span className="block text-3xl font-serif font-semibold">{counter}s</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest opacity-80">{phase}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-10">
+        <button
+          onClick={onSkip}
+          className="px-5 py-2 rounded-full text-xs text-sanctuary-warmMuted hover:text-sanctuary-cream transition"
+        >
+          Skip to Grounding →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GroundingActivity({ onComplete }) {
+  const [index, setIndex] = useState(0);
+  const [tapped, setTapped] = useState([]);
+  const current = GROUNDING_STEPS[index];
+
+  const handleTap = (num) => {
+    if (!tapped.includes(num)) {
+      const next = [...tapped, num];
+      setTapped(next);
+      audioService.playSoftChime();
+
+      if (next.length === current.count) {
+        setTimeout(() => {
+          if (index < GROUNDING_STEPS.length - 1) {
+            setIndex(i => i + 1);
+            setTapped([]);
+          } else {
+            onComplete();
+          }
+        }, 550);
+      }
+    }
+  };
+
+  return (
+    <div className="max-w-xl mx-auto py-4 text-center">
+      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sanctuary-sage/15 border border-sanctuary-sage/30 text-sanctuary-sageLight text-xs mb-4">
+        <span>Step {index + 1} of 5</span>
+        <span>•</span>
+        <span>Sensory Grounding</span>
+      </div>
+
+      <h3 className="font-serif text-2xl md:text-3xl text-sanctuary-cream mb-2">
+        {current.count} Things You Can {current.sense}
+      </h3>
+      <p className="text-sanctuary-warmText text-sm md:text-base mb-2">
+        {current.prompt}
+      </p>
+      <p className="text-sanctuary-warmMuted text-xs italic mb-8 max-w-md mx-auto">
+        e.g., {current.hint}
+      </p>
+
+      {/* Interactive tap leaves */}
+      <div className="flex justify-center items-center gap-3 my-6">
+        {Array.from({ length: current.count }, (_, i) => i + 1).map(num => {
+          const isDone = tapped.includes(num);
+          return (
+            <button
+              key={num}
+              onClick={() => handleTap(num)}
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center text-sm font-medium transition-all duration-300 ${
+                isDone 
+                  ? 'bg-sanctuary-sage/40 border-2 border-sanctuary-sage text-sanctuary-cream scale-105 shadow-md shadow-sanctuary-sage/20' 
+                  : 'bg-sanctuary-nightSurface border border-sanctuary-nightBorder text-sanctuary-warmMuted hover:border-sanctuary-sand/40 hover:scale-105'
+              }`}
+            >
+              {isDone ? '✓' : num}
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="text-xs text-sanctuary-warmMuted mt-4">
+        Tap each numbered stone as you mentally identify it around you.
+      </p>
+    </div>
+  );
+}
+
+function LetItOutStage({ emotion, onNext, onSaveJournal }) {
+  const [text, setText] = useState('');
+  const [isDissolving, setIsDissolving] = useState(false);
+  const [hasReleased, setHasReleased] = useState(false);
+
+  const handleRelease = () => {
+    if (!text.trim()) return;
+    setIsDissolving(true);
+    audioService.playSoftChime();
+  };
+
+  const handleSave = () => {
+    if (text.trim()) {
+      onSaveJournal(text, emotion ? emotion.label : 'Quiet Reflection');
+    }
+    onNext();
+  };
+
+  return (
+    <div className="max-w-xl mx-auto py-2 text-center">
+      {!hasReleased ? (
+        <>
+          <h3 className="font-serif text-2xl md:text-3xl text-sanctuary-cream mb-2">
+            Let it out onto this quiet page.
+          </h3>
+          <p className="text-sanctuary-warmMuted text-xs md:text-sm mb-6">
+            You don’t have to make it sound okay or sensible. Just set it down here.
+          </p>
+
+          {isDissolving ? (
+            <div className="py-6">
+              <DissolveCanvas 
+                text={text} 
+                onComplete={() => {
+                  setIsDissolving(false);
+                  setHasReleased(true);
+                }} 
+              />
+              <p className="text-xs text-sanctuary-sand/80 animate-pulse font-serif mt-2">
+                Dissolving your heavy thoughts into quiet stardust...
+              </p>
+            </div>
+          ) : (
+            <div>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={5}
+                placeholder={emotion ? emotion.prompt : "What's feeling heavy or unresolved tonight?"}
+                className="w-full p-4 rounded-2xl bg-sanctuary-nightSurface/90 border border-sanctuary-nightBorder text-sanctuary-warmText placeholder-sanctuary-warmMuted/60 focus:outline-none focus:border-sanctuary-sand/50 text-sm md:text-base leading-relaxed resize-none shadow-inner"
+              />
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+                <span className="text-[11px] text-sanctuary-warmMuted">
+                  🔒 Private to your browser. Never transmitted anywhere.
+                </span>
+                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                  <button
+                    onClick={handleSave}
+                    disabled={!text.trim()}
+                    className="px-4 py-2 rounded-xl text-xs font-medium border border-sanctuary-nightBorder text-sanctuary-warmMuted hover:text-sanctuary-cream hover:bg-white/5 transition disabled:opacity-30"
+                  >
+                    Keep in journal
+                  </button>
+                  <button
+                    onClick={handleRelease}
+                    disabled={!text.trim()}
+                    className="px-5 py-2 rounded-xl text-xs font-medium bg-gradient-to-r from-sanctuary-terracotta to-amber-700 hover:from-sanctuary-terracotta/90 hover:to-amber-600 text-white shadow-md transition disabled:opacity-30"
+                  >
+                    Let it go ✨
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="py-8">
+          <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-sanctuary-sand/10 border border-sanctuary-sand/30 flex items-center justify-center text-sanctuary-sand text-2xl">
+            ✨
+          </div>
+          <h4 className="font-serif text-2xl text-sanctuary-cream mb-2">
+            You don’t have to carry this alone tonight.
+          </h4>
+          <p className="text-sanctuary-warmMuted text-xs md:text-sm max-w-md mx-auto mb-6">
+            The worry is outside of you now. You gave it a voice, and you allowed it to drift away.
+          </p>
+          <button
+            onClick={onNext}
+            className="px-6 py-2.5 rounded-full bg-sanctuary-sand text-sanctuary-night text-xs font-semibold hover:bg-sanctuary-cream transition shadow-lg"
+          >
+            Continue Journey →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReCenterStage({ onChooseFocus, onChooseRest }) {
+  const [selected, setSelected] = useState('studies');
+
+  const options = [
+    { id: 'studies', emoji: '📖', label: 'My studies', desc: 'Taking it one small, patient paragraph at a time.' },
+    { id: 'creative', emoji: '🎨', label: 'Creative project', desc: 'Without judging whether it’s good or bad.' },
+    { id: 'health', emoji: '🍵', label: 'Body & nourishment', desc: 'Drinking water, eating something warm, stretching.' },
+    { id: 'rest', emoji: '🌙', label: 'Simply resting', desc: 'Allowing tonight to just be a time of healing.' }
+  ];
+
+  return (
+    <div className="max-w-xl mx-auto py-2 text-center">
+      <h3 className="font-serif text-2xl md:text-3xl text-sanctuary-cream mb-2">
+        Feeling a little lighter?
+      </h3>
+      <p className="text-sanctuary-warmMuted text-xs md:text-sm mb-6 max-w-md mx-auto">
+        Where would you like to gently return your loving attention to?
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8 text-left">
+        {options.map(opt => (
+          <button
+            key={opt.id}
+            onClick={() => setSelected(opt.id)}
+            className={`p-4 rounded-2xl border text-left flex items-start gap-3 transition-all ${
+              selected === opt.id 
+                ? 'bg-sanctuary-sand/15 border-sanctuary-sand/60 text-sanctuary-cream shadow-md' 
+                : 'bg-sanctuary-nightSurface border-sanctuary-nightBorder text-sanctuary-warmMuted hover:border-sanctuary-sand/30'
+            }`}
+          >
+            <span className="text-xl p-1.5 rounded-xl bg-white/5">{opt.emoji}</span>
+            <div>
+              <div className="text-sm font-medium text-sanctuary-warmText">{opt.label}</div>
+              <div className="text-xs text-sanctuary-warmMuted mt-0.5">{opt.desc}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+        {selected === 'rest' ? (
+          <button
+            onClick={onChooseRest}
+            className="w-full sm:w-auto px-6 py-3 rounded-full bg-sanctuary-sand text-sanctuary-night font-semibold text-xs tracking-wide hover:bg-sanctuary-cream transition shadow-lg"
+          >
+            Enter Starlit Rest Room 🌙
+          </button>
+        ) : (
+          <button
+            onClick={() => onChooseFocus(selected)}
+            className="w-full sm:w-auto px-6 py-3 rounded-full bg-sanctuary-sand text-sanctuary-night font-semibold text-xs tracking-wide hover:bg-sanctuary-cream transition shadow-lg"
+          >
+            Start 25-min Gentle Focus ⏳
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SoundMixerDrawer({ isOpen, onClose, activeSounds, soundVolumes, toggleSound, setSoundVolume, masterMuted, toggleMasterMute, setSoundPreset }) {
+  const tracks = [
+    { key: 'rain', label: 'Rain on Glass', emoji: '🌧️' },
+    { key: 'ocean', label: 'Tidal Swell', emoji: '🌊' },
+    { key: 'fireplace', label: 'Hearth Wood', emoji: '🔥' },
+    { key: 'forest', label: 'Pine Wind', emoji: '🌲' },
+    { key: 'drone', label: '528Hz Drone Chord', emoji: '✨' }
+  ];
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+      <div className="w-full max-w-md bg-sanctuary-nightSurface border border-sanctuary-nightBorder rounded-3xl p-6 shadow-2xl text-sanctuary-warmText">
+        <div className="flex items-center justify-between pb-4 border-b border-white/10">
+          <div>
+            <h3 className="font-serif text-lg text-sanctuary-cream">Soundscape Mixer</h3>
+            <p className="text-xs text-sanctuary-warmMuted">Procedural client-side audio synthesis</p>
+          </div>
+          <button 
+            onClick={onClose}
+            className="p-1.5 rounded-full hover:bg-white/10 text-sanctuary-warmMuted hover:text-sanctuary-cream transition"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Ambient Presets */}
+        <div className="my-4">
+          <span className="text-[11px] uppercase font-mono tracking-wider text-sanctuary-warmMuted block mb-2">Presets</span>
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { id: 'study', label: 'Deep Focus', preset: { rain: 0.5, drone: 0.25 } },
+              { id: 'sleep', label: 'Sleepy Rain', preset: { rain: 0.6, fireplace: 0.3 } },
+              { id: 'ocean', label: 'Tidal Shore', preset: { ocean: 0.6, drone: 0.2 } },
+              { id: 'forest', label: 'Pine Retreat', preset: { forest: 0.5, rain: 0.2 } }
+            ].map(p => (
+              <button
+                key={p.id}
+                onClick={() => setSoundPreset(p.preset)}
+                className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-sanctuary-sand/20 border border-white/10 text-xs text-center transition"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Sliders */}
+        <div className="space-y-3.5 my-4">
+          {tracks.map(t => {
+            const isActive = !!activeSounds[t.key];
+            const vol = soundVolumes[t.key] || 0.5;
+
+            return (
+              <div key={t.key} className="flex items-center justify-between gap-3 text-xs">
+                <button
+                  onClick={() => toggleSound(t.key)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${
+                    isActive 
+                      ? 'bg-sanctuary-sand/20 border-sanctuary-sand/50 text-sanctuary-cream' 
+                      : 'bg-white/5 border-white/5 text-sanctuary-warmMuted hover:text-sanctuary-warmText'
+                  }`}
+                >
+                  <span>{t.emoji}</span>
+                  <span>{t.label}</span>
+                </button>
+
+                <input
+                  type="range"
+                  min="0.05"
+                  max="1"
+                  step="0.05"
+                  value={vol}
+                  disabled={!isActive}
+                  onChange={(e) => setSoundVolume(t.key, parseFloat(e.target.value))}
+                  className={`w-32 h-1.5 rounded-lg cursor-pointer bg-white/20 transition ${
+                    !isActive ? 'opacity-30 cursor-not-allowed' : ''
+                  }`}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Master Control */}
+        <div className="pt-4 border-t border-white/10 flex items-center justify-between">
+          <button
+            onClick={toggleMasterMute}
+            className="flex items-center gap-2 text-xs text-sanctuary-warmMuted hover:text-sanctuary-cream"
+          >
+            <span>{masterMuted ? '🔇 Unmute Master' : '🔊 Mute All Sounds'}</span>
+          </button>
+          <span className="text-[10px] text-sanctuary-warmMuted">Zero external streaming</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FocusMode({ initialTask = 'Quiet Studying' }) {
+  const [task, setTask] = useState(initialTask);
+  const [minutes, setMinutes] = useState(25);
+  const [secondsLeft, setSecondsLeft] = useState(25 * 60);
+  const [isActive, setIsActive] = useState(false);
+  const [completed, setCompleted] = useState(false);
+
+  useEffect(() => {
+    let interval = null;
+    if (isActive && secondsLeft > 0) {
+      interval = setInterval(() => {
+        setSecondsLeft(sec => sec - 1);
+      }, 1000);
+    } else if (secondsLeft === 0 && isActive) {
+      setIsActive(false);
+      setCompleted(true);
+      audioService.playSoftChime();
+    }
+    return () => clearInterval(interval);
+  }, [isActive, secondsLeft]);
+
+  const selectDuration = (m) => {
+    setMinutes(m);
+    setSecondsLeft(m * 60);
+    setIsActive(false);
+    setCompleted(false);
+  };
+
+  const toggleTimer = () => {
+    if (!isActive) audioService.resume();
+    setIsActive(!isActive);
+  };
+
+  const resetTimer = () => {
+    setIsActive(false);
+    setSecondsLeft(minutes * 60);
+    setCompleted(false);
+  };
+
+  const formatTime = () => {
+    const m = Math.floor(secondsLeft / 60);
+    const s = secondsLeft % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="max-w-xl mx-auto py-10 px-4 text-center">
+      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sanctuary-sand/15 border border-sanctuary-sand/30 text-sanctuary-sand text-xs mb-4">
+        <span>⏳ Quiet Focus Space</span>
+      </div>
+
+      <div className="mb-6">
+        <input
+          type="text"
+          value={task}
+          onChange={(e) => setTask(e.target.value)}
+          placeholder="What gentle step are you taking?"
+          className="text-center font-serif text-2xl md:text-3xl text-sanctuary-cream bg-transparent border-b border-white/20 pb-2 focus:outline-none focus:border-sanctuary-sand transition w-full max-w-md"
+        />
+        <p className="text-sanctuary-warmMuted text-xs mt-2">
+          No race. Just this single block of kind, unhurried attention.
+        </p>
+      </div>
+
+      {/* Timer circular clock face */}
+      <div className="relative w-64 h-64 mx-auto my-8 flex items-center justify-center">
+        <div className={`absolute inset-0 rounded-full border border-sanctuary-sand/20 transition-all duration-1000 ${isActive ? 'scale-105 shadow-[0_0_40px_rgba(233,224,206,0.15)]' : ''}`} />
+        <div className="text-center">
+          <div className="font-mono text-5xl font-light tracking-wider text-sanctuary-cream">
+            {formatTime()}
+          </div>
+          <span className="text-[11px] font-mono uppercase tracking-widest text-sanctuary-warmMuted mt-2 block">
+            {isActive ? 'In Quiet Flow' : 'Ready When You Are'}
+          </span>
+        </div>
+      </div>
+
+      {/* Preset Duration Buttons */}
+      <div className="flex justify-center items-center gap-2 mb-8">
+        {[15, 25, 45, 60].map(m => (
+          <button
+            key={m}
+            onClick={() => selectDuration(m)}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-mono transition ${
+              minutes === m 
+                ? 'bg-sanctuary-sand text-sanctuary-night font-semibold shadow-sm' 
+                : 'bg-sanctuary-nightSurface border border-sanctuary-nightBorder text-sanctuary-warmMuted hover:text-sanctuary-cream'
+            }`}
+          >
+            {m}m
+          </button>
+        ))}
+      </div>
+
+      {/* Controls */}
+      <div className="flex justify-center items-center gap-4">
+        <button
+          onClick={toggleTimer}
+          className="px-8 py-3 rounded-full bg-sanctuary-sand text-sanctuary-night font-semibold text-xs tracking-wider uppercase transition hover:bg-sanctuary-cream shadow-lg"
+        >
+          {isActive ? 'Pause Focus' : 'Begin Gently'}
+        </button>
+        <button
+          onClick={resetTimer}
+          className="p-3 rounded-full border border-sanctuary-nightBorder text-sanctuary-warmMuted hover:text-sanctuary-cream transition"
+          title="Reset timer"
+        >
+          ↺
+        </button>
+      </div>
+
+      {completed && (
+        <div className="mt-8 p-4 rounded-2xl bg-sanctuary-sage/20 border border-sanctuary-sage/40 text-sanctuary-sageLight text-xs animate-in fade-in">
+          <p className="font-serif text-sm text-sanctuary-cream">That is enough for now. You showed up.</p>
+          <p className="text-sanctuary-warmMuted mt-1">Take a sip of water, relax your neck, and acknowledge your effort.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function JournalView({ entries, onAddEntry, onDeleteEntry }) {
+  const [content, setContent] = useState('');
+  const [tag, setTag] = useState('Gentle Thought');
+
+  const tags = ['Gentle Thought', 'Letting Go', 'Academic Stress', 'Gratitude', 'Heartache', 'Quiet Victory'];
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!content.trim()) return;
+    onAddEntry({
+      id: Date.now(),
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: content,
+      tag
+    });
+    setContent('');
+    audioService.playSoftChime();
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto py-8 px-4">
+      <div className="text-center max-w-lg mx-auto mb-8">
+        <span className="text-xs uppercase font-mono tracking-widest text-sanctuary-sand/80">Personal Solace</span>
+        <h2 className="font-serif text-3xl text-sanctuary-cream mt-1">Private Journal</h2>
+        <p className="text-sanctuary-warmMuted text-xs md:text-sm mt-1">
+          No metrics, no scores, no evaluations. Only an open, private space for whatever your heart is holding.
+        </p>
+      </div>
+
+      {/* Writing Box */}
+      <form onSubmit={handleSubmit} className="p-5 md:p-6 rounded-3xl bg-sanctuary-nightSurface border border-sanctuary-nightBorder shadow-xl mb-10">
+        <div className="flex flex-wrap gap-2 mb-3">
+          {tags.map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTag(t)}
+              className={`px-3 py-1 rounded-full text-xs transition ${
+                tag === t 
+                  ? 'bg-sanctuary-sand/20 border border-sanctuary-sand/50 text-sanctuary-sand' 
+                  : 'bg-white/5 border border-white/5 text-sanctuary-warmMuted hover:text-sanctuary-cream'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          rows={4}
+          placeholder="You can write anything here without judgment..."
+          className="w-full bg-transparent text-sanctuary-warmText placeholder-sanctuary-warmMuted/60 focus:outline-none text-sm md:text-base leading-relaxed resize-none border-b border-white/10 pb-3"
+        />
+
+        <div className="flex items-center justify-between pt-3 text-xs">
+          <span className="text-sanctuary-warmMuted flex items-center gap-1.5">
+            <span>🛡️ Saved locally to this browser</span>
+          </span>
+          <button
+            type="submit"
+            disabled={!content.trim()}
+            className="px-5 py-2 rounded-xl bg-sanctuary-sand hover:bg-sanctuary-cream text-sanctuary-night font-semibold transition disabled:opacity-40"
+          >
+            Safekeep Note
+          </button>
+        </div>
+      </form>
+
+      {/* Entries List */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between text-xs text-sanctuary-warmMuted px-1">
+          <span>Your timeline of showing up for yourself</span>
+          <span>{entries.length} reflections saved</span>
+        </div>
+
+        {entries.length === 0 ? (
+          <div className="p-10 rounded-3xl border border-dashed border-sanctuary-nightBorder text-center text-sanctuary-warmMuted text-xs">
+            Your journal is waiting. Write whenever your heart feels too heavy to carry alone.
+          </div>
+        ) : (
+          entries.map(entry => (
+            <div key={entry.id} className="p-5 rounded-2xl bg-sanctuary-nightSurface/70 border border-sanctuary-nightBorder hover:border-sanctuary-sand/30 transition group">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-sanctuary-sand/15 text-sanctuary-sand font-mono">
+                    {entry.tag}
+                  </span>
+                  <span className="text-xs text-sanctuary-warmMuted">{entry.date} • {entry.time}</span>
+                </div>
+                <button
+                  onClick={() => onDeleteEntry(entry.id)}
+                  className="opacity-0 group-hover:opacity-100 text-sanctuary-warmMuted hover:text-rose-300 transition text-xs"
+                >
+                  Delete
+                </button>
+              </div>
+              <p className="text-sanctuary-warmText text-sm font-serif leading-relaxed whitespace-pre-wrap">
+                {entry.text}
+              </p>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SmallWinsView({ wins, onToggleWin, onAddWin }) {
+  const [customText, setCustomText] = useState('');
+  const completedCount = wins.filter(w => w.done).length;
+
+  const handleAdd = (e) => {
+    e.preventDefault();
+    if (!customText.trim()) return;
+    onAddWin(customText.trim());
+    setCustomText('');
+  };
+
+  const handleToggle = (id) => {
+    onToggleWin(id);
+    audioService.playSoftChime();
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto py-8 px-4">
+      <div className="text-center max-w-lg mx-auto mb-8">
+        <span className="text-xs uppercase font-mono tracking-widest text-sanctuary-sand/80">Quiet Progress</span>
+        <h2 className="font-serif text-3xl text-sanctuary-cream mt-1">Small Wins</h2>
+        <p className="text-sanctuary-warmMuted text-xs md:text-sm mt-1">
+          No streak penalties or competition. Just gentle recognition for the quiet ways you endured and showed up today.
+        </p>
+      </div>
+
+      {/* Warm affirmation banner */}
+      <div className="p-6 rounded-3xl bg-gradient-to-r from-sanctuary-terracotta/20 via-sanctuary-nightSurface to-sanctuary-sage/20 border border-sanctuary-sand/20 mb-6 flex items-center justify-between">
+        <div>
+          <h4 className="font-serif text-lg text-sanctuary-cream">
+            {completedCount > 0 ? "You did more today than you gave yourself credit for." : "Even enduring today is an accomplishment."}
+          </h4>
+          <p className="text-xs text-sanctuary-warmMuted mt-1">
+            {completedCount} gentle step{completedCount === 1 ? '' : 's'} acknowledged today.
+          </p>
+        </div>
+        <div className="text-2xl">🌱</div>
+      </div>
+
+      {/* Add Custom Win Form */}
+      <form onSubmit={handleAdd} className="flex gap-2 mb-6">
+        <input
+          type="text"
+          value={customText}
+          onChange={(e) => setCustomText(e.target.value)}
+          placeholder="Add a gentle win (e.g. 'Stood in the sunlight', 'Ate a warm meal')..."
+          className="flex-1 px-4 py-2.5 rounded-xl bg-sanctuary-nightSurface border border-sanctuary-nightBorder text-sanctuary-warmText placeholder-sanctuary-warmMuted/60 text-xs md:text-sm focus:outline-none focus:border-sanctuary-sand/50"
+        />
+        <button
+          type="submit"
+          disabled={!customText.trim()}
+          className="px-4 py-2.5 rounded-xl bg-sanctuary-sand text-sanctuary-night font-semibold text-xs hover:bg-sanctuary-cream transition disabled:opacity-40"
+        >
+          Add Step
+        </button>
+      </form>
+
+      {/* Wins List */}
+      <div className="space-y-2.5">
+        {wins.map(win => (
+          <button
+            key={win.id}
+            onClick={() => handleToggle(win.id)}
+            className={`w-full p-3.5 rounded-2xl border text-left flex items-center justify-between transition-all ${
+              win.done 
+                ? 'bg-sanctuary-sage/15 border-sanctuary-sage/30 text-sanctuary-cream' 
+                : 'bg-sanctuary-nightSurface border-sanctuary-nightBorder text-sanctuary-warmMuted hover:border-sanctuary-sand/30'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-5 h-5 rounded-lg border flex items-center justify-center transition-colors ${
+                win.done ? 'bg-sanctuary-sage border-sanctuary-sage text-sanctuary-night' : 'border-sanctuary-warmMuted/40'
+              }`}>
+                {win.done && '✓'}
+              </div>
+              <span className={`text-sm ${win.done ? 'line-through text-sanctuary-warmMuted' : 'text-sanctuary-warmText'}`}>
+                {win.text}
+              </span>
+            </div>
+            <span className="text-[11px] text-sanctuary-warmMuted font-mono">{win.time}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReflectionCompanion({ onStartPause }) {
+  const [messages, setMessages] = useState([
+    {
+      sender: 'assistant',
+      text: "Hello. I’m your quiet reflection companion. You don't have to carry your burdens all at once here. Tell me what’s feeling hard today—whether it's an exam, a friendship, or feeling behind."
+    }
+  ]);
+  const [input, setInput] = useState('');
+  const [crisisAlert, setCrisisAlert] = useState(false);
+
+  const crisisKeywords = ['suicide', 'kill myself', 'end my life', 'want to die', 'harm myself', 'no reason to live'];
+
+  const handleSend = (e) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    const userText = input.trim();
+    setMessages(prev => [...prev, { sender: 'user', text: userText }]);
+    setInput('');
+
+    // Safety checks
+    const isCrisis = crisisKeywords.some(kw => userText.toLowerCase().includes(kw));
+    if (isCrisis) {
+      setCrisisAlert(true);
+      setTimeout(() => {
+        setMessages(prev => [
+          ...prev,
+          {
+            sender: 'assistant',
+            text: "I hear how much pain you are holding right now, and I want you to be safe. Please know that you do not have to carry this alone. There are people who care and want to support you right this second.",
+            isSafety: true
+          }
+        ]);
+      }, 500);
+      return;
+    }
+
+    // Empathetic reframing response logic
+    setTimeout(() => {
+      let reply = "It makes complete sense that you are feeling this friction. Your value as a person isn't tied to today's difficulty.";
+      const lower = userText.toLowerCase();
+
+      if (lower.includes('grade') || lower.includes('exam') || lower.includes('study') || lower.includes('fail')) {
+        reply = "Academic stress can make it feel like your entire future is on trial right now. But an exam or degree is just a circumstance; it is not the totality of your intelligence or your destiny. Would you like to step into a 3-minute pause or put things down for a moment?";
+      } else if (lower.includes('miss') || lower.includes('alone') || lower.includes('lonely') || lower.includes('friend')) {
+        reply = "Feeling disconnected or missing someone can ache in a very quiet, heavy way. You don't need to force yourself to smile or pretend it doesn't sting. Be very gentle with yourself this evening.";
+      } else if (lower.includes('compare') || lower.includes('behind') || lower.includes('everyone else')) {
+        reply = "When you look at others, you see their finished chapter while sitting inside your messy draft. Everyone's timeline unfolds in its own quiet season. You are not late to your own life.";
+      }
+
+      setMessages(prev => [...prev, { sender: 'assistant', text: reply }]);
+    }, 600);
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto py-8 px-4 flex flex-col h-[75vh]">
+      <div className="text-center pb-4 border-b border-white/10">
+        <h3 className="font-serif text-2xl text-sanctuary-cream">Reflection Companion</h3>
+        <p className="text-xs text-sanctuary-warmMuted">A thoughtful sounding board. Non-clinical & compassionate.</p>
+      </div>
+
+      {crisisAlert && (
+        <div className="my-3 p-4 rounded-2xl bg-rose-950/70 border border-rose-400/40 text-rose-200 text-xs">
+          <p className="font-semibold text-rose-100 mb-1">If you are in acute distress or need urgent support:</p>
+          <p>Please call or text <strong>988</strong> (USA/Canada) or text HOME to <strong>741741</strong>. International resources are available at <a href="https://findahelpline.com" target="_blank" rel="noreferrer" className="underline font-medium">findahelpline.com</a>. You matter and deserve direct support.</p>
+        </div>
+      )}
+
+      {/* Messages Feed */}
+      <div className="flex-1 overflow-y-auto py-4 space-y-3.5 pr-1">
+        {messages.map((m, idx) => (
+          <div key={idx} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed ${
+              m.sender === 'user' 
+                ? 'bg-sanctuary-sand/20 border border-sanctuary-sand/40 text-sanctuary-cream rounded-br-none' 
+                : m.isSafety 
+                ? 'bg-rose-950/60 border border-rose-400/40 text-rose-100 rounded-bl-none'
+                : 'bg-sanctuary-nightSurface border border-sanctuary-nightBorder text-sanctuary-warmText rounded-bl-none font-serif'
+            }`}>
+              {m.text}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Quick Prompts */}
+      <div className="py-2 flex items-center gap-2 overflow-x-auto text-[11px] text-sanctuary-warmMuted">
+        <button 
+          onClick={() => setInput("I feel like I'm falling behind everyone else in college.")}
+          className="whitespace-nowrap px-3 py-1 rounded-full bg-white/5 border border-white/10 hover:border-sanctuary-sand/40 transition"
+        >
+          "I feel behind everyone"
+        </button>
+        <button 
+          onClick={() => setInput("I studied all day but I still feel like a failure.")}
+          className="whitespace-nowrap px-3 py-1 rounded-full bg-white/5 border border-white/10 hover:border-sanctuary-sand/40 transition"
+        >
+          "I still feel like a failure"
+        </button>
+        <button 
+          onClick={() => onStartPause()}
+          className="whitespace-nowrap px-3 py-1 rounded-full bg-sanctuary-sand/15 border border-sanctuary-sand/30 text-sanctuary-sand hover:bg-sanctuary-sand/25 transition"
+        >
+          🌬️ Take a 3-minute reset
+        </button>
+      </div>
+
+      {/* Input */}
+      <form onSubmit={handleSend} className="pt-2 flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Share what is troubling you..."
+          className="flex-1 px-4 py-3 rounded-2xl bg-sanctuary-nightSurface border border-sanctuary-nightBorder text-sanctuary-warmText placeholder-sanctuary-warmMuted/60 text-sm focus:outline-none focus:border-sanctuary-sand/40"
+        />
+        <button
+          type="submit"
+          disabled={!input.trim()}
+          className="px-5 py-3 rounded-2xl bg-sanctuary-sand hover:bg-sanctuary-cream text-sanctuary-night font-semibold text-xs transition disabled:opacity-40"
+        >
+          Send
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function App() {
+  const [view, setView] = useState('home'); // home, pause, rooms, focus, journal, wins, companion
+  const [pauseStep, setPauseStep] = useState(0); // 0: Check-in, 1: Empathetic affirmation, 2: Breathe, 3: Ground, 4: Let It Out, 5: Refocus
+  const [selectedEmotion, setSelectedEmotion] = useState(null);
+  const [activeRoom, setActiveRoom] = useState(ROOMS[0]);
+
+  // Audio State
+  const [activeSounds, setActiveSounds] = useState({});
+  const [soundVolumes, setSoundVolumes] = useState({
+    rain: 0.6,
+    ocean: 0.5,
+    fireplace: 0.4,
+    forest: 0.5,
+    drone: 0.35
+  });
+  const [masterMuted, setMasterMuted] = useState(false);
+  const [isMixerOpen, setIsMixerOpen] = useState(false);
+
+  // Local Storage
+  const [journalEntries, setJournalEntries] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sanctuary_journal');
+      return saved ? JSON.parse(saved) : [
+        {
+          id: 1,
+          date: 'Yesterday',
+          time: '9:45 PM',
+          tag: 'Letting Go',
+          text: 'Was comparing myself to people getting internships today. Taking this moment reminded me my path has its own quiet season.'
+        }
+      ];
+    } catch(e) {
+      return [];
+    }
+  });
+
+  const [smallWins, setSmallWins] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sanctuary_wins');
+      return saved ? JSON.parse(saved) : DEFAULT_WINS;
+    } catch(e) {
+      return DEFAULT_WINS;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sanctuary_journal', JSON.stringify(journalEntries));
+    } catch(e) {}
+  }, [journalEntries]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sanctuary_wins', JSON.stringify(smallWins));
+    } catch(e) {}
+  }, [smallWins]);
+
+  // Sound Engine Controls
+  const toggleSound = (key) => {
+    audioService.init();
+    audioService.resume();
+    setActiveSounds(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      if (next[key]) {
+        audioService.startSound(key, soundVolumes[key] || 0.5);
+      } else {
+        audioService.stopSound(key);
+      }
+      return next;
+    });
+  };
+
+  const handleSetSoundVolume = (key, vol) => {
+    setSoundVolumes(prev => ({ ...prev, [key]: vol }));
+    audioService.setSoundVolume(key, vol);
+  };
+
+  const toggleMasterMute = () => {
+    const muted = audioService.toggleMute();
+    setMasterMuted(muted);
+  };
+
+  const setSoundPreset = (presetObj) => {
+    audioService.init();
+    audioService.resume();
+    // Stop all current
+    Object.keys(activeSounds).forEach(k => audioService.stopSound(k));
+    const nextActive = {};
+    const nextVols = { ...soundVolumes };
+
+    Object.entries(presetObj).forEach(([k, vol]) => {
+      nextActive[k] = true;
+      nextVols[k] = vol;
+      audioService.startSound(k, vol);
+    });
+
+    setActiveSounds(nextActive);
+    setSoundVolumes(nextVols);
+  };
+
+  const handleSelectRoom = (room) => {
+    setActiveRoom(room);
+    audioService.init();
+    audioService.resume();
+    Object.keys(activeSounds).forEach(k => {
+      if (k !== room.soundKey) audioService.stopSound(k);
+    });
+    audioService.startSound(room.soundKey, soundVolumes[room.soundKey] || 0.5);
+    setActiveSounds({ [room.soundKey]: true });
+  };
+
+  const startPauseJourney = (emotion = null) => {
+    setSelectedEmotion(emotion);
+    setPauseStep(emotion ? 1 : 0);
+    setView('pause');
+  };
+
+  const handleAddJournal = (entry) => {
+    setJournalEntries(prev => [entry, ...prev]);
+  };
+
+  const handleDeleteJournal = (id) => {
+    setJournalEntries(prev => prev.filter(e => e.id !== id));
+  };
+
+  const handleToggleWin = (id) => {
+    setSmallWins(prev => prev.map(w => w.id === id ? { ...w, done: !w.done } : w));
+  };
+
+  const handleAddWin = (text) => {
+    setSmallWins(prev => [{ id: Date.now(), text, done: true, time: 'Just now' }, ...prev]);
+  };
+
+  const anySoundPlaying = Object.values(activeSounds).some(Boolean);
+
+  return (
+    <div className="min-h-screen bg-sanctuary-night text-sanctuary-warmText flex flex-col relative overflow-x-hidden bg-grain">
+      {/* Dynamic Background Atmosphere */}
+      <AtmosphericCanvas />
+
+      {/* Main Top Header */}
+      <header className="relative z-30 w-full px-6 py-4 flex items-center justify-between border-b border-white/5 backdrop-blur-md bg-sanctuary-night/75">
+        <button 
+          onClick={() => setView('home')}
+          className="flex items-center gap-3 text-left group"
+        >
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sanctuary-sand to-sanctuary-terracotta flex items-center justify-center text-sanctuary-night font-serif font-bold text-sm shadow-md">
+            S
+          </div>
+          <div>
+            <span className="font-serif text-lg tracking-wide text-sanctuary-cream group-hover:text-sanctuary-sand transition">
+              Sanctuary
+            </span>
+            <span className="hidden sm:inline-block text-[10px] font-mono text-sanctuary-warmMuted ml-2 tracking-widest uppercase">
+              Digital Refuge
+            </span>
+          </div>
+        </button>
+
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex items-center gap-1.5 bg-white/5 p-1 rounded-full border border-white/5">
+          {[
+            { id: 'home', label: 'Home' },
+            { id: 'pause', label: 'Pause' },
+            { id: 'rooms', label: 'Rooms' },
+            { id: 'focus', label: 'Focus' },
+            { id: 'journal', label: 'Journal' },
+            { id: 'wins', label: 'Small Wins' },
+            { id: 'companion', label: 'Companion' }
+          ].map(item => (
+            <button
+              key={item.id}
+              onClick={() => {
+                if (item.id === 'pause') startPauseJourney(null);
+                else setView(item.id);
+              }}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${
+                view === item.id 
+                  ? 'bg-sanctuary-sand/20 text-sanctuary-sand shadow-sm border border-sanctuary-sand/30' 
+                  : 'text-sanctuary-warmMuted hover:text-sanctuary-cream'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Audio Quick Bar & CTA */}
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setIsMixerOpen(true)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs border transition ${
+              anySoundPlaying 
+                ? 'bg-sanctuary-sand/20 border-sanctuary-sand/40 text-sanctuary-sand' 
+                : 'bg-white/5 border-white/10 text-sanctuary-warmMuted hover:text-sanctuary-cream'
+            }`}
+          >
+            <span>{anySoundPlaying ? '🔊' : '🔈'}</span>
+            <span className="hidden sm:inline">{anySoundPlaying ? 'Ambience Playing' : 'Soundscapes'}</span>
+          </button>
+
+          <button
+            onClick={() => startPauseJourney(null)}
+            className="px-4 py-1.5 rounded-full bg-sanctuary-sand hover:bg-sanctuary-cream text-sanctuary-night font-semibold text-xs transition shadow-sm"
+          >
+            Take a Pause
+          </button>
+        </div>
+      </header>
+
+      {/* Main App Body */}
+      <main className="flex-1 relative z-20 pb-24 md:pb-12">
+        {/* VIEW: HOME LANDING */}
+        {view === 'home' && (
+          <div className="max-w-5xl mx-auto px-6 py-12 md:py-20 flex flex-col items-center text-center">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sanctuary-sand text-xs mb-8">
+              <span>✨ A peaceful sanctuary for school & university students</span>
+            </div>
+
+            <h1 className="font-serif text-4xl sm:text-5xl md:text-6xl text-sanctuary-cream leading-tight max-w-3xl">
+              You don’t have to figure everything out right now.
+            </h1>
+
+            <p className="text-sanctuary-warmMuted text-base md:text-lg max-w-xl mt-6 leading-relaxed">
+              Take a pause. Let your mind breathe. Express what hurts or distracts, soften the pressure, and then decide what comes next.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-center gap-4 mt-10">
+              <button
+                onClick={() => startPauseJourney(null)}
+                className="w-full sm:w-auto px-8 py-3.5 rounded-full bg-gradient-to-r from-sanctuary-sand to-sanctuary-cream hover:bg-white text-sanctuary-night font-semibold text-sm shadow-xl transition hover:scale-102 flex items-center justify-center gap-2"
+              >
+                <span>Take a Pause</span>
+                <span>→</span>
+              </button>
+              <button
+                onClick={() => setView('rooms')}
+                className="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/15 text-sanctuary-warmText text-sm font-medium transition"
+              >
+                Explore Quiet Rooms
+              </button>
+            </div>
+
+            {/* Emotional Check-in Tray */}
+            <div className="w-full max-w-4xl mt-20 pt-12 border-t border-white/5">
+              <p className="font-serif text-2xl text-sanctuary-cream mb-2">What are you carrying right now?</p>
+              <p className="text-xs text-sanctuary-warmMuted mb-6">Select anything that resonates for a tailored, gentle reset.</p>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-left">
+                {EMOTIONAL_STATES.map(emo => (
+                  <button
+                    key={emo.id}
+                    onClick={() => startPauseJourney(emo)}
+                    className="p-4 rounded-2xl bg-sanctuary-nightSurface/80 border border-sanctuary-nightBorder hover:border-sanctuary-sand/40 hover:bg-sanctuary-sand/5 transition-all text-left flex flex-col justify-between h-28 group"
+                  >
+                    <span className="text-2xl">{emo.emoji}</span>
+                    <div>
+                      <div className="text-xs font-semibold text-sanctuary-warmText group-hover:text-sanctuary-sand transition">{emo.label}</div>
+                      <div className="text-[10px] text-sanctuary-warmMuted line-clamp-1 mt-0.5">{emo.sub}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: PAUSE JOURNEY (5 Stages) */}
+        {view === 'pause' && (
+          <div className="max-w-3xl mx-auto px-6 py-8">
+            {/* Step Breadcrumbs */}
+            <div className="flex items-center justify-center gap-2 mb-8 text-xs text-sanctuary-warmMuted">
+              {['Feeling', 'Affirm', 'Breathe', 'Ground', 'Release', 'Refocus'].map((stName, idx) => {
+                const isCurrent = pauseStep === idx;
+                const isPassed = pauseStep > idx;
+                return (
+                  <div key={stName} className="flex items-center gap-2">
+                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-mono ${
+                      isCurrent 
+                        ? 'bg-sanctuary-sand/20 text-sanctuary-sand border border-sanctuary-sand/40' 
+                        : isPassed 
+                        ? 'text-sanctuary-sage' 
+                        : 'text-stone-600'
+                    }`}>
+                      {stName}
+                    </span>
+                    {idx < 5 && <span className="text-stone-700">›</span>}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Stage 0: Emotional Selection */}
+            {pauseStep === 0 && (
+              <div className="text-center py-4">
+                <h2 className="font-serif text-3xl md:text-4xl text-sanctuary-cream mb-2">What is sitting heavy on your mind?</h2>
+                <p className="text-sanctuary-warmMuted text-xs md:text-sm mb-8">Take a moment to name the weight. There is no wrong answer.</p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-w-xl mx-auto text-left">
+                  {EMOTIONAL_STATES.map(emo => (
+                    <button
+                      key={emo.id}
+                      onClick={() => {
+                        setSelectedEmotion(emo);
+                        setPauseStep(1);
+                      }}
+                      className="p-4 rounded-2xl bg-sanctuary-nightSurface border border-sanctuary-nightBorder hover:border-sanctuary-sand/40 hover:bg-sanctuary-sand/5 transition-all flex items-center gap-3.5 text-left group"
+                    >
+                      <span className="text-2xl p-2 rounded-xl bg-white/5">{emo.emoji}</span>
+                      <div>
+                        <div className="text-sm font-semibold text-sanctuary-warmText group-hover:text-sanctuary-sand">{emo.label}</div>
+                        <div className="text-xs text-sanctuary-warmMuted">{emo.sub}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Stage 1: Tailored Affirmation */}
+            {pauseStep === 1 && selectedEmotion && (
+              <div className="max-w-xl mx-auto py-8 text-center">
+                <div className="text-4xl mb-4">{selectedEmotion.emoji}</div>
+                <h3 className="font-serif text-2xl md:text-3xl text-sanctuary-cream mb-4 leading-relaxed">
+                  "{selectedEmotion.quote}"
+                </h3>
+                <p className="text-sanctuary-warmMuted text-xs md:text-sm mb-8">
+                  Let’s step into a gentle 3-minute reset. No expectations, no pressure.
+                </p>
+
+                <button
+                  onClick={() => setPauseStep(2)}
+                  className="px-8 py-3 rounded-full bg-sanctuary-sand hover:bg-sanctuary-cream text-sanctuary-night font-semibold text-xs tracking-wide uppercase transition shadow-lg"
+                >
+                  Begin Breathing Exercise →
+                </button>
+              </div>
+            )}
+
+            {/* Stage 2: Breathing Orb */}
+            {pauseStep === 2 && (
+              <BreathingOrb 
+                onComplete={() => setPauseStep(3)} 
+                onSkip={() => setPauseStep(3)} 
+              />
+            )}
+
+            {/* Stage 3: Grounding 5-4-3-2-1 */}
+            {pauseStep === 3 && (
+              <GroundingActivity onComplete={() => setPauseStep(4)} />
+            )}
+
+            {/* Stage 4: Let It Out (Dissolving Worries) */}
+            {pauseStep === 4 && (
+              <LetItOutStage 
+                emotion={selectedEmotion} 
+                onNext={() => setPauseStep(5)}
+                onSaveJournal={(text, tag) => {
+                  handleAddJournal({
+                    id: Date.now(),
+                    date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    text,
+                    tag
+                  });
+                }}
+              />
+            )}
+
+            {/* Stage 5: Re-center & Choices */}
+            {pauseStep === 5 && (
+              <ReCenterStage 
+                onChooseFocus={(task) => {
+                  setView('focus');
+                }}
+                onChooseRest={() => {
+                  handleSelectRoom(ROOMS[4]); // Starlit rest room
+                  setView('rooms');
+                }}
+              />
+            )}
+          </div>
+        )}
+
+        {/* VIEW: ROOMS */}
+        {view === 'rooms' && (
+          <div className="max-w-5xl mx-auto py-8 px-4">
+            <div className="text-center max-w-xl mx-auto mb-8">
+              <span className="text-xs uppercase font-mono tracking-widest text-sanctuary-sand/80">Virtual Sanctuary</span>
+              <h2 className="font-serif text-3xl md:text-4xl text-sanctuary-cream mt-1">Peaceful Rooms</h2>
+              <p className="text-sanctuary-warmMuted text-xs md:text-sm mt-2">
+                Step into a room designed to soothe your specific state of mind. Ambient sounds automatically tune to the space.
+              </p>
+            </div>
+
+            {/* Featured Active Room Canvas Window */}
+            <div className={`relative rounded-3xl p-6 md:p-10 border border-white/10 shadow-2xl bg-gradient-to-br ${activeRoom.themeBg} transition-all duration-700 overflow-hidden mb-8 min-h-[340px] flex flex-col justify-between`}>
+              <RoomVisualCanvas roomType={activeRoom.id} />
+
+              <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-serif text-3xl text-sanctuary-cream">{activeRoom.name}</h3>
+                  <p className="text-xs text-sanctuary-sand mt-0.5">{activeRoom.tagline}</p>
+                </div>
+
+                <button
+                  onClick={() => handleSelectRoom(activeRoom)}
+                  className="self-start md:self-auto flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-xs text-sanctuary-cream backdrop-blur-md transition"
+                >
+                  <span>🔊 Tune to Room</span>
+                </button>
+              </div>
+
+              <div className="relative z-10 max-w-md my-6">
+                <p className="text-sm md:text-base text-sanctuary-warmText font-serif leading-relaxed">
+                  "{activeRoom.desc}"
+                </p>
+              </div>
+
+              <div className="relative z-10 flex items-center justify-between text-xs text-sanctuary-warmMuted border-t border-white/10 pt-4">
+                <span>Procedural Soundscape Active</span>
+                <span className="font-mono text-sanctuary-sand uppercase">Safe Refuge</span>
+              </div>
+            </div>
+
+            {/* Room Selector Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {ROOMS.map(room => {
+                const isCurrent = activeRoom.id === room.id;
+                return (
+                  <button
+                    key={room.id}
+                    onClick={() => handleSelectRoom(room)}
+                    className={`p-4 rounded-2xl border text-left transition-all duration-300 flex flex-col justify-between h-28 ${
+                      isCurrent 
+                        ? 'bg-sanctuary-sand/20 border-sanctuary-sand text-sanctuary-cream shadow-lg scale-102' 
+                        : 'bg-sanctuary-nightSurface border-sanctuary-nightBorder text-sanctuary-warmMuted hover:text-sanctuary-warmText hover:border-sanctuary-sand/30'
+                    }`}
+                  >
+                    <span className="font-serif text-base text-sanctuary-cream font-medium leading-tight">{room.name}</span>
+                    <span className="text-[10px] text-sanctuary-warmMuted">Enter Room →</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: FOCUS MODE */}
+        {view === 'focus' && (
+          <FocusMode initialTask="Quiet Studying" />
+        )}
+
+        {/* VIEW: JOURNAL */}
+        {view === 'journal' && (
+          <JournalView 
+            entries={journalEntries} 
+            onAddEntry={handleAddJournal} 
+            onDeleteEntry={handleDeleteJournal} 
+          />
+        )}
+
+        {/* VIEW: SMALL WINS */}
+        {view === 'wins' && (
+          <SmallWinsView 
+            wins={smallWins} 
+            onToggleWin={handleToggleWin} 
+            onAddWin={handleAddWin} 
+          />
+        )}
+
+        {/* VIEW: COMPANION */}
+        {view === 'companion' && (
+          <ReflectionCompanion onStartPause={() => startPauseJourney(null)} />
+        )}
+      </main>
+
+      {/* Floating Sound Mixer Drawer Modal */}
+      <SoundMixerDrawer 
+        isOpen={isMixerOpen}
+        onClose={() => setIsMixerOpen(false)}
+        activeSounds={activeSounds}
+        soundVolumes={soundVolumes}
+        toggleSound={toggleSound}
+        setSoundVolume={handleSetSoundVolume}
+        masterMuted={masterMuted}
+        toggleMasterMute={toggleMasterMute}
+        setSoundPreset={setSoundPreset}
+      />
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-sanctuary-night/95 backdrop-blur-lg border-t border-white/10 px-2 py-2 flex items-center justify-around">
+        {[
+          { id: 'home', label: 'Home', icon: '🏠' },
+          { id: 'pause', label: 'Pause', icon: '🌬️' },
+          { id: 'rooms', label: 'Rooms', icon: '🌲' },
+          { id: 'focus', label: 'Focus', icon: '⏳' },
+          { id: 'journal', label: 'Journal', icon: '📖' },
+          { id: 'wins', label: 'Wins', icon: '🌱' }
+        ].map(item => {
+          const isActive = view === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => {
+                if (item.id === 'pause') startPauseJourney(null);
+                else setView(item.id);
+              }}
+              className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] transition ${
+                isActive ? 'text-sanctuary-sand font-semibold' : 'text-sanctuary-warmMuted'
+              }`}
+            >
+              <span className="text-base">{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
